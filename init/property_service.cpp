@@ -799,21 +799,15 @@ static void load_override_properties() {
 }
 
 static const char *snet_prop_key[] = {
-    "ro.boot.vbmeta.device_state",
-    "ro.boot.verifiedbootstate",
-    "ro.boot.flash.locked",
     "ro.boot.selinux",
-    "ro.boot.veritymode",
     "ro.boot.warranty_bit",
     "ro.warranty_bit",
     "ro.debuggable",
     "ro.secure",
-    "ro.bootimage.build.type",
     "ro.build.type",
     "ro.system.build.type",
     "ro.system_ext.build.type",
     "ro.vendor.build.type",
-    "ro.vendor_dlkm.build.type",
     "ro.product.build.type",
     "ro.odm.build.type",
     "ro.build.keys",
@@ -821,27 +815,19 @@ static const char *snet_prop_key[] = {
     "ro.system.build.tags",
     "ro.vendor.boot.warranty_bit",
     "ro.vendor.warranty_bit",
-    "vendor.boot.vbmeta.device_state",
-    "vendor.boot.verifiedbootstate",
     NULL
 };
 
 static const char *snet_prop_value[] = {
-    "locked", // ro.boot.vbmeta.device_state
-    "green", // ro.boot.verifiedbootstate
-    "1", // ro.boot.flash.locked
     "enforcing", // ro.boot.selinux
-    "enforcing", // ro.boot.veritymode
     "0", // ro.boot.warranty_bit
     "0", // ro.warranty_bit
     "0", // ro.debuggable
     "1", // ro.secure
-    "user", // ro.bootimage.build.type
     "user", // ro.build.type
     "user", // ro.system.build.type
     "user", // ro.system_ext.build.type
     "user", // ro.vendor.build.type
-    "user", // ro.vendor_dlkm.build.type
     "user", // ro.product.build.type
     "user", // ro.odm.build.type
     "release-keys", // ro.build.keys
@@ -849,35 +835,23 @@ static const char *snet_prop_value[] = {
     "release-keys", // ro.system.build.tags
     "0", // ro.vendor.boot.warranty_bit
     "0", // ro.vendor.warranty_bit
-    "locked", // vendor.boot.vbmeta.device_state
-    "green", // vendor.boot.verifiedbootstate
     NULL
 };
 
 static void workaround_snet_properties() {
     std::string build_type = android::base::GetProperty("ro.build.type", "");
 
-    // Bail out if this is recovery, fastbootd, or anything other than a normal boot.
-    // fastbootd, in particular, needs the real values so it can allow flashing on
-    // unlocked bootloaders.
-    if (IsRecoveryMode()) {
-        return;
-    }
-
-    // Exit if eng build
-    if (build_type == "eng") {
-        return;
-    }
-
     // Weaken property override security to set safetynet props
     weaken_prop_override_security = true;
 
     std::string error;
 
-    // Hide all sensitive props 
-    LOG(INFO) << "snet: Hiding sensitive props";
-    for (int i = 0; snet_prop_key[i]; ++i) {
-        PropertySet(snet_prop_key[i], snet_prop_value[i], &error);
+    // Hide all sensitive props if not eng build
+    if (build_type != "eng") {
+        LOG(INFO) << "snet: Hiding sensitive props";
+        for (int i = 0; snet_prop_key[i]; ++i) {
+            PropertySet(snet_prop_key[i], snet_prop_value[i], &error);
+        }
     }
 
     // Extra pops
@@ -1237,7 +1211,9 @@ void PropertyLoadBootDefaults() {
     property_initialize_ro_cpu_abilist();
     property_initialize_ro_vendor_api_level();
 
-    update_sys_usb_config();
+    if (android::base::GetBoolProperty("ro.persistent_properties.ready", false)) {
+        update_sys_usb_config();
+    }
 
     // Workaround SafetyNet
     workaround_snet_properties();
@@ -1383,6 +1359,15 @@ static void ProcessBootconfig() {
     });
 }
 
+static void SetSafetyNetProps() {
+    InitPropertySet("ro.boot.flash.locked", "1");
+    InitPropertySet("ro.boot.verifiedbootstate", "green");
+    InitPropertySet("ro.boot.veritymode", "enforcing");
+    InitPropertySet("ro.boot.vbmeta.device_state", "locked");
+    InitPropertySet("vendor.boot.vbmeta.device_state", "locked");
+    InitPropertySet("vendor.boot.verifiedbootstate", "green");
+}
+
 void PropertyInit() {
     selinux_callback cb;
     cb.func_audit = PropertyAuditCallback;
@@ -1396,6 +1381,12 @@ void PropertyInit() {
     if (!property_info_area.LoadDefaultPath()) {
         LOG(FATAL) << "Failed to load serialized property info file";
     }
+
+    // Report a valid verified boot chain to make Google SafetyNet integrity
+    // checks pass. This needs to be done before parsing the kernel cmdline as
+    // these properties are read-only and will be set to invalid values with
+    // androidboot cmdline arguments.
+    SetSafetyNetProps();
 
     // If arguments are passed both on the command line and in DT,
     // properties set in DT always have priority over the command-line ones.

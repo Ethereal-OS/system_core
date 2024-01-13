@@ -89,6 +89,14 @@ init_host_sources = [
     "host_init_verifier.cpp",
 ]
 
+cc_library_static {
+    name: "vendor_init",
+    recovery_available: true,
+    srcs: [
+        "vendor_init.cpp",
+    ],
+}
+
 soong_config_module_type {
     name: "libinit_cc_defaults",
     module_type: "cc_defaults",
@@ -98,14 +106,6 @@ soong_config_module_type {
     ],
     properties: [
         "cflags",
-    ],
-}
-
-cc_library_static {
-    name: "vendor_init",
-    recovery_available: true,
-    srcs: [
-        "vendor_init.cpp",
     ],
 }
 
@@ -122,7 +122,7 @@ libinit_cc_defaults {
         "-Werror",
         "-Wthread-safety",
         "-DALLOW_FIRST_STAGE_CONSOLE=0",
-        "-DALLOW_LOCAL_PROP_OVERRIDE=0",
+        "-DALLOW_LOCAL_PROP_OVERRIDE=1",
         "-DALLOW_PERMISSIVE_SELINUX=0",
         "-DREBOOT_BOOTLOADER_ON_PANIC=0",
         "-DWORLD_WRITABLE_KMSG=0",
